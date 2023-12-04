@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
     /*
         Parse the command-line arguments
     */
-    char *filename = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\projects\\proj1\\tests\\advanced\\fib_iter.bin";
+    char *filename = nullptr;
     bool do_help = false;
     bool arg_error = false;
     for (int i=1; i<argc; i++) {
