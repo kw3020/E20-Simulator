@@ -87,6 +87,12 @@ void print_state(unsigned pc, uint16_t regs[], uint16_t memory[], size_t memquan
         cout << endl;
 }
 
+int16_t sign_extend_7bit(uint16_t imm) {
+    if (imm >> 6)  // If the most significant bit is 1 (negative)
+        return -64 + (imm & 0b111111); // Sign-extend by subtracting 64
+    return imm;
+}
+
 //INSTRUCTION SET
 //3.1 INSTRUCTIONS WITH 3 REGISTER ARGUMENTS
 //3.1.1 add $regDst, $regSrcA, $regSrcB
@@ -116,7 +122,7 @@ void slt(uint16_t regDst, uint16_t regSrcA, uint16_t regSrcB, uint16_t regs[]) {
 }
 //3.1.6 jr $reg
 void jr(unsigned& pc, uint16_t reg, uint16_t regs[]) {
-    pc = regs[reg];
+    pc = regs[reg] % MEM_SIZE; // Jump with wraparound
 }
 
 //3.2 INSTRUCTIONS WITH 2 REGISTER ARGUMENTS
@@ -129,31 +135,20 @@ void slti(uint16_t regDst, uint16_t regSrc, uint16_t imm, uint16_t regs[]) {
 }
 //3.2.2 lw $regDst, imm($regAddr)
 void lw(uint16_t regDst, uint16_t regAddr, uint16_t imm, uint16_t memory[], uint16_t regs[]) {
-    uint16_t effectiveAddress = regs[regAddr] + imm; //calc address
-    if (effectiveAddress >= MEM_SIZE) { //outside of accessible memory
-        cerr << "Memory access violation or unaligned address" << endl;
-        exit(1);
-    }
-    if(regDst != 0) { //can't change reg0 so do nothing
-        regs[regDst] = memory[effectiveAddress]; 
+    uint16_t effectiveAddress = (regs[regAddr] + imm) % MEM_SIZE;
+    if (regDst != 0) { // Can't change reg0 so do nothing
+        regs[regDst] = memory[effectiveAddress];
     }
 }
 //3.2.3 sw $regSrc, imm($regAddr)
 void sw(uint16_t regSrc, uint16_t regAddr, uint16_t imm, uint16_t memory[], uint16_t regs[]) {
-    uint16_t effectiveAddress = regs[regAddr] + imm; //calc address
-    if (effectiveAddress >= MEM_SIZE) { //outside of accessible memory
-        cerr << "Memory access violation or unaligned address" << endl;
-        exit(1);
-    }
+    uint16_t effectiveAddress = (regs[regAddr] + imm) % MEM_SIZE;
     memory[effectiveAddress] = regs[regSrc];
 }
 //3.2.4 jeq $regA, $regB, imm
 void jeq(uint16_t regA, uint16_t regB, int16_t imm, unsigned& pc, uint16_t regs[]) {
-    //convert to 2's comp
-    if (imm >> 6 == 1) //negative number
-        imm = -64 + (imm & 0b111111);
-
-    pc = (regs[regA] == regs[regB]) ? pc + imm + 1 : pc + 1;
+    imm = sign_extend_7bit(imm); // Assuming you have a sign_extend_7bit function
+    pc = (regs[regA] == regs[regB]) ? (pc + imm + 1) % MEM_SIZE : (pc + 1) % MEM_SIZE;
 }
 //3.2.5 addi $regDst, $regSrc, imm
 void addi(uint16_t regDst, uint16_t regSrc, int16_t imm, uint16_t regs[]) {
@@ -168,12 +163,12 @@ void addi(uint16_t regDst, uint16_t regSrc, int16_t imm, uint16_t regs[]) {
 //3.3 INSTRUCTIONS WITH NO REGISTER ARGUMENTS
 //3.3.1 j imm
 void j(unsigned& pc, int imm) {
-    pc = imm;
+    pc = imm % MEM_SIZE; // Jump with wraparound
 }
 //3.3.2 jal imm
 void jal(unsigned& pc, uint16_t regs[], int imm) {
-    regs[7] = pc + 1;
-    pc = imm;
+    regs[7] = (pc + 1) % MEM_SIZE; // Save return address with wraparound
+    pc = imm % MEM_SIZE; // Jump with wraparound
 }
 
 void execute_instruction(uint16_t instr, unsigned& pc, uint16_t regs[], uint16_t memory[], bool& running) {
@@ -186,19 +181,19 @@ void execute_instruction(uint16_t instr, unsigned& pc, uint16_t regs[], uint16_t
         uint16_t choice = instr & 0b1111; //last 4 bits
         if(choice == 0) { //add
             add(regDst, regSrcA, regSrcB, regs);
-            pc++;
+            pc = (pc + 1) % MEM_SIZE;
         } else if (choice == 1){ //sub
             sub(regDst, regSrcA, regSrcB, regs);
-            pc++;
+            pc = (pc + 1) % MEM_SIZE;
         } else if (choice == 2){ //or
             or_instr(regDst, regSrcA, regSrcB, regs);
-            pc++;
+            pc = (pc + 1) % MEM_SIZE;
         } else if (choice == 3){ //and
             and_instr(regDst, regSrcA, regSrcB, regs);
-            pc++;
+            pc = (pc + 1) % MEM_SIZE;
         } else if (choice == 4) { //slt
             slt(regDst, regSrcA, regSrcB, regs);
-            pc++;
+            pc = (pc + 1) % MEM_SIZE;
         } else if (choice == 8) { //jr
             jr(pc, regSrcA, regs);
         }
@@ -207,7 +202,7 @@ void execute_instruction(uint16_t instr, unsigned& pc, uint16_t regs[], uint16_t
         uint16_t regDst = (instr >> 7) & 7; //bits 7-9
         uint16_t imm = instr & 0b1111111;  //7 bit immediate
         addi(regDst, regSrc, imm, regs);
-        pc++;
+        pc = (pc + 1) % MEM_SIZE;;
     } else if (opcode == 2) { //j
         uint16_t imm = instr & 0x1FFF; //13 bit immediate
         if(imm == pc) //it's a halt function
@@ -222,13 +217,13 @@ void execute_instruction(uint16_t instr, unsigned& pc, uint16_t regs[], uint16_t
         uint16_t regDst = (instr >> 7) & 7; //bit 7-9
         uint16_t imm = instr & 0b1111111; //7 bit immediate
         lw(regDst, regAddr, imm, memory, regs);
-        pc++;
+        pc = (pc + 1) % MEM_SIZE;
     } else if (opcode == 0x5) { //sw
         uint16_t regAddr = (instr >> 10) & 7; //bits 10-12
         uint16_t regSrc = (instr >> 7) & 7; //bit 7-9
         uint16_t imm = instr & 0b1111111; //7 bit immediate
         sw(regSrc, regAddr, imm, memory, regs);
-        pc++;
+        pc = (pc + 1) % MEM_SIZE;
     } else if (opcode == 6) { //jeq
         uint16_t regA = (instr >> 10) & 7; //bits 10-12
         uint16_t regB = (instr >> 7) & 7; //bit 7-9
@@ -239,7 +234,7 @@ void execute_instruction(uint16_t instr, unsigned& pc, uint16_t regs[], uint16_t
         uint16_t regDst = (instr >> 7) & 7; //bit 7-9
         uint16_t imm = instr & 0b1111111; //7 bit immediate
         slti(regDst, regSrc, imm, regs);
-        pc++;
+        pc = (pc + 1) % MEM_SIZE;
     } else { //opcode was wrong
         cerr << "Unknown instruction: " << instr << endl;
         exit(1);
@@ -296,7 +291,7 @@ int main(int argc, char *argv[]) {
     unsigned pc = 0; 
     bool running = true;
     while(running) {
-        uint16_t instr = memory[pc]; 
+        uint16_t instr = memory[pc % MEM_SIZE]; 
         execute_instruction(instr, pc, regs, memory, running);
     }
     
