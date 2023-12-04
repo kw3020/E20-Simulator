@@ -128,10 +128,9 @@ void jr(unsigned& pc, uint16_t reg, uint16_t regs[]) {
 //3.2 INSTRUCTIONS WITH 2 REGISTER ARGUMENTS
 //3.2.1 slti $regDst, $regSrc, imm
 void slti(uint16_t regDst, uint16_t regSrc, uint16_t imm, uint16_t regs[]) {
-    int16_t signedImm = static_cast<int16_t>(imm);
-    int32_t signedImm32 = static_cast<int32_t>(signedImm);
-    if(regDst != 0) //can't change reg0
-        regs[regDst] = (static_cast<int32_t>(regs[regSrc]) < signedImm32) ? 1 : 0;
+    int16_t signedImm = sign_extend_7bit(imm);
+    if (regDst != 0) // can't change reg0
+        regs[regDst] = (static_cast<int32_t>(regs[regSrc]) < signedImm) ? 1 : 0;
 }
 //3.2.2 lw $regDst, imm($regAddr)
 void lw(uint16_t regDst, uint16_t regAddr, uint16_t imm, uint16_t memory[], uint16_t regs[]) {
@@ -147,17 +146,14 @@ void sw(uint16_t regSrc, uint16_t regAddr, uint16_t imm, uint16_t memory[], uint
 }
 //3.2.4 jeq $regA, $regB, imm
 void jeq(uint16_t regA, uint16_t regB, int16_t imm, unsigned& pc, uint16_t regs[]) {
-    imm = sign_extend_7bit(imm); // Assuming you have a sign_extend_7bit function
+    imm = sign_extend_7bit(imm); // sign_extend_7bit function
     pc = (regs[regA] == regs[regB]) ? (pc + imm + 1) % MEM_SIZE : (pc + 1) % MEM_SIZE;
 }
 //3.2.5 addi $regDst, $regSrc, imm
 void addi(uint16_t regDst, uint16_t regSrc, int16_t imm, uint16_t regs[]) {
-    //convert to 2's comp
-    if (imm >> 6 == 1) //negative number
-        imm = -64 + (imm & 0b111111);
-
-    if(regDst != 0) //can't change reg0 so do nothing
-        regs[regDst] = regs[regSrc] + imm;
+    imm = sign_extend_7bit(imm);
+    if (regDst != 0) // can't change reg0
+        regs[regDst] = (regs[regSrc] + imm) % REG_SIZE; // Using modular arithmetic for wrap-around
 }
 
 //3.3 INSTRUCTIONS WITH NO REGISTER ARGUMENTS
@@ -249,7 +245,7 @@ int main(int argc, char *argv[]) {
     /*
         Parse the command-line arguments
     */
-    char *filename = nullptr;
+    char *filename = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\projects\\proj1\\tests\\advanced\\fib_iter.bin";
     bool do_help = false;
     bool arg_error = false;
     for (int i=1; i<argc; i++) {
